@@ -254,11 +254,7 @@
       const trimmed = input.trim();
       if (!trimmed) return null;
 
-      // Already in owner/repo format (no protocol, no extra paths)
-      if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(trimmed) && !trimmed.includes('://') && !trimmed.startsWith('www.')) {
-        return trimmed;
-      }
-
+      // Try full URL first (handles github.com/owner/repo, github.com/owner/repo/tree/main, etc.)
       try {
         const url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
         const hostname = url.hostname.toLowerCase();
@@ -273,12 +269,12 @@
           }
         }
       } catch {
-        // Not a valid URL, try shorthand
+        // Not a valid URL, continue to shorthand check
       }
 
-      // Try shorthand owner/repo
+      // Shorthand owner/repo (no dots in owner, no protocol, no domain-like patterns)
       const shorthand = trimmed.split('/').filter(Boolean);
-      if (shorthand.length === 2) {
+      if (shorthand.length === 2 && !shorthand[0].includes('.') && !trimmed.includes('://') && !trimmed.startsWith('www.')) {
         return `${shorthand[0]}/${shorthand[1]}`;
       }
 
