@@ -34,14 +34,9 @@
             '18': '4.5rem',
           },
           animation: {
-            'fade-in-up': 'fadeInUp 0.4s ease-out forwards',
             'slide-in': 'slideIn 0.3s ease-out forwards',
           },
           keyframes: {
-            fadeInUp: {
-              '0%': { opacity: '0', transform: 'translateY(12px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            },
             slideIn: {
               '0%': { opacity: '0', transform: 'translateX(-8px)' },
               '100%': { opacity: '1', transform: 'translateX(0)' },
@@ -67,15 +62,6 @@
     :focus-visible {
       outline: 2px solid #58a6ff;
       outline-offset: 2px;
-    }
-
-    .card-enter {
-      opacity: 0;
-      transform: translateY(12px);
-    }
-
-    .card-enter.active {
-      animation: fadeInUp 0.4s ease-out forwards;
     }
 
     .copy-toast {
@@ -360,7 +346,7 @@
     function createCard(tool, repo, index) {
       const url = tool.url(repo);
       return `
-        <article class="card-enter bg-bgElevated border border-border rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4" role="listitem" style="animation-delay: ${index * 80}ms">
+        <article class="bg-bgElevated border border-border rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4" role="listitem" style="opacity: 0; transform: translateY(12px); transition: opacity 0.4s ease-out, transform 0.4s ease-out;">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-3 mb-2">
               <span class="text-lg font-semibold text-fg">${tool.name}</span>
@@ -391,23 +377,32 @@
       `;
     }
 
-    // Render cards with staggered animation
+    // Render cards with staggered animation - one by one
     function renderCards(repo) {
       currentRepo = repo;
       currentUrls = TOOLS.map(t => t.url(repo));
 
-      cardsContainer.innerHTML = TOOLS.map((tool, index) => createCard(tool, repo, index)).join('');
-
-      // Trigger animations
-      requestAnimationFrame(() => {
-        const cards = cardsContainer.querySelectorAll('.card-enter');
-        cards.forEach((card, i) => {
-          setTimeout(() => card.classList.add('active'), i * 80);
-        });
-      });
-
+      // Clear container first
+      cardsContainer.innerHTML = '';
       resultsSection.classList.remove('hidden');
       emptyState.classList.add('hidden');
+
+      // Add cards one by one with delay
+      TOOLS.forEach((tool, index) => {
+        setTimeout(() => {
+          const cardHtml = createCard(tool, repo, index);
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = cardHtml;
+          const card = tempDiv.firstElementChild;
+          cardsContainer.appendChild(card);
+          
+          // Force reflow then animate in
+          requestAnimationFrame(() => {
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+          });
+        }, index * 100);
+      });
     }
 
     // Copy to clipboard with toast
