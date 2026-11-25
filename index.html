@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="GitHub Repo Lens — Instant links to code exploration tools for any GitHub repository">
+  <title>GitHub Repo Lens</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0d1117',
+            bgElevated: '#161b22',
+            border: '#30363d',
+            borderHover: '#484f58',
+            fg: '#e6edf3',
+            fgMuted: '#8b949e',
+            accent: '#58a6ff',
+            accentHover: '#79b8ff',
+            accentDim: '#1f4068',
+            success: '#3fb950',
+            successDim: '#1e4d2e',
+            danger: '#f85149',
+            dangerDim: '#6e1d1d',
+          },
+          fontFamily: {
+            sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
+          },
+          spacing: {
+            '18': '4.5rem',
+          },
+          animation: {
+            'fade-in-up': 'fadeInUp 0.4s ease-out forwards',
+            'slide-in': 'slideIn 0.3s ease-out forwards',
+          },
+          keyframes: {
+            fadeInUp: {
+              '0%': { opacity: '0', transform: 'translateY(12px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            slideIn: {
+              '0%': { opacity: '0', transform: 'translateX(-8px)' },
+              '100%': { opacity: '1', transform: 'translateX(0)' },
+            },
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    html, body {
+      overflow-x: clip;
+    }
+
+    :focus-visible {
+      outline: 2px solid #58a6ff;
+      outline-offset: 2px;
+    }
+
+    .card-enter {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+
+    .card-enter.active {
+      animation: fadeInUp 0.4s ease-out forwards;
+    }
+
+    .copy-toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+      z-index: 50;
+    }
+
+    .copy-toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .recent-item {
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .recent-item:hover {
+      background-color: #1f4068;
+      border-color: #58a6ff;
+    }
+
+    input[type="text"]::placeholder {
+      color: #6e7681;
+    }
+
+    @keyframes pulse-subtle {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(88, 166, 255, 0); }
+    }
+
+    .btn-primary:focus-visible {
+      animation: pulse-subtle 2s infinite;
+    }
+  </style>
+</head>
+<body class="bg-bg text-fg min-h-screen flex flex-col">
+  <main class="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+    <!-- Header -->
+    <header class="mb-10 text-center">
+      <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight text-fg mb-2">GitHub Repo Lens</h1>
+      <p class="text-fgMuted text-base max-w-2xl mx-auto">Paste any GitHub repository URL to instantly generate links for code exploration, documentation, and AI-powered analysis tools.</p>
+    </header>
+
+    <!-- Input Section -->
+    <section class="mb-8" aria-labelledby="input-heading">
+      <h2 id="input-heading" class="sr-only">Repository Input</h2>
+      <div class="bg-bgElevated border border-border rounded-xl p-4 sm:p-5">
+        <div class="flex flex-col sm:flex-row gap-3">
+          <label for="repo-input" class="sr-only">GitHub repository URL or owner/repo</label>
+          <input
+            type="text"
+            id="repo-input"
+            placeholder="https://github.com/owner/repo  or  owner/repo"
+            class="flex-1 bg-bg border border-border rounded-lg px-4 py-3 text-base text-fg placeholder-fgMuted focus:border-accent focus:ring-2 focus:ring-accentDim transition-colors font-mono text-sm sm:text-base"
+            aria-describedby="input-hint"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button
+            id="generate-btn"
+            class="btn-primary bg-accent text-white font-medium px-6 py-3 rounded-lg hover:bg-accentHover focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg transition-colors whitespace-nowrap"
+            type="button"
+            aria-label="Generate links"
+          >
+            Generate Links
+          </button>
+        </div>
+        <p id="input-hint" class="mt-2 text-xs text-fgMuted text-center sm:text-left">Supports full URLs (github.com/owner/repo/tree/main/...), shorthand (owner/repo), and GitHub Enterprise URLs</p>
+        <p id="error-msg" class="mt-2 text-xs text-danger hidden" role="alert" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- Recent Repos -->
+    <section id="recent-section" class="mb-8 hidden" aria-labelledby="recent-heading">
+      <h2 id="recent-heading" class="sr-only">Recent Repositories</h2>
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-medium text-fgMuted uppercase tracking-wider">Recent</h3>
+        <button
+          id="clear-recent-btn"
+          class="text-xs text-fgMuted hover:text-fg transition-colors font-mono"
+          type="button"
+          aria-label="Clear history"
+        >
+          Clear
+        </button>
+      </div>
+      <div id="recent-list" class="flex flex-wrap gap-2" role="list" aria-label="Recently used repositories"></div>
+    </section>
+
+    <!-- Results Section -->
+    <section id="results-section" class="hidden" aria-labelledby="results-heading" aria-live="polite">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+        <h2 id="results-heading" class="text-lg font-semibold text-fg">Generated Links</h2>
+        <div class="flex items-center gap-3">
+          <button
+            id="open-all-btn"
+            class="bg-bgElevated border border-borderHover text-fg font-medium px-4 py-2 rounded-lg hover:border-accent hover:text-accent transition-colors text-sm flex items-center gap-2"
+            type="button"
+            aria-label="Open all links in new tabs"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            Open All
+          </button>
+          <span class="text-xs text-fgMuted hidden sm:inline-flex items-center gap-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" x2="12.01" y2="8"></line></svg>
+            Allow pop-ups
+          </span>
+        </div>
+      </div>
+
+      <div id="cards-container" class="space-y-3" role="list" aria-label="Repository tools"></div>
+    </section>
+
+    <!-- Empty State -->
+    <section id="empty-state" class="text-center py-16 sm:py-24" aria-hidden="true">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mx-auto mb-4 text-borderHover" aria-hidden="true"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+      <p class="text-fgMuted text-base">Enter a repository above to get started</p>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-border py-6 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-fgMuted">
+      <p>Not affiliated with GitHub or any linked services. All tools are third-party.</p>
+      <div class="flex items-center gap-4">
+        <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="hover:text-accent transition-colors" aria-label="GitHub">GitHub</a>
+        <span aria-hidden="true">·</span>
+        <a href="#" id="view-source" class="hover:text-accent transition-colors">View Source</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Copy Toast -->
+  <div id="copy-toast" class="copy-toast bg-bgElevated border border-success text-success px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm" role="status" aria-live="polite" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    <span id="toast-text">Copied!</span>
+  </div>
+
+  <script>
+    // Tool definitions
+    const TOOLS = [
+      { id: 'gitdiagram', name: 'GitDiagram', description: 'Interactive architecture flowchart', url: (repo) => `https://gitdiagram.com/${repo}` },
+      { id: 'deepwiki', name: 'DeepWiki', description: 'AI-generated documentation & Q&A chat', url: (repo) => `https://deepwiki.com/${repo}` },
+      { id: 'gitingest', name: 'GitIngest', description: 'Full codebase as an LLM-ready text digest', url: (repo) => `https://gitingest.com/${repo}` },
+      { id: 'uithub', name: 'Uithub', description: 'Fast structured text & API view', url: (repo) => `https://uithub.com/${repo}` },
+      { id: 'gitmcp', name: 'GitMCP', description: 'Instant MCP server endpoint for AI tools', url: (repo) => `https://gitmcp.io/${repo}` },
+      { id: 'githubdev', name: 'GitHub.dev', description: 'Official browser-based VS Code editor', url: (repo) => `https://github.dev/${repo}` },
+      { id: 'github1s', name: 'GitHub1s', description: 'Lightweight read-only VS Code viewer', url: (repo) => `https://github1s.com/${repo}` },
+      { id: 'githubbox', name: 'GitHubBox', description: 'Live CodeSandbox web preview', url: (repo) => `https://githubbox.com/${repo}` },
+    ];
+
+    // DOM elements
+    const repoInput = document.getElementById('repo-input');
+    const generateBtn = document.getElementById('generate-btn');
+    const errorMsg = document.getElementById('error-msg');
+    const recentSection = document.getElementById('recent-section');
+    const recentList = document.getElementById('recent-list');
+    const clearRecentBtn = document.getElementById('clear-recent-btn');
+    const resultsSection = document.getElementById('results-section');
+    const cardsContainer = document.getElementById('cards-container');
+    const openAllBtn = document.getElementById('open-all-btn');
+    const emptyState = document.getElementById('empty-state');
+    const copyToast = document.getElementById('copy-toast');
+    const toastText = document.getElementById('toast-text');
+
+    let currentRepo = null;
+    let currentUrls = [];
+
+    // Parse GitHub URL to extract owner/repo
+    function parseGitHubUrl(input) {
+      const trimmed = input.trim();
+      if (!trimmed) return null;
+
+      // Already in owner/repo format (no protocol, no extra paths)
+      if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(trimmed) && !trimmed.includes('://') && !trimmed.startsWith('www.')) {
+        return trimmed;
+      }
+
+      try {
+        const url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
+        const hostname = url.hostname.toLowerCase();
+
+        // GitHub.com or GitHub Enterprise
+        if (hostname === 'github.com' || hostname.endsWith('.github.com') || hostname.includes('github')) {
+          const pathParts = url.pathname.split('/').filter(Boolean);
+          if (pathParts.length >= 2) {
+            const owner = pathParts[0];
+            const repo = pathParts[1].replace(/\.git$/, '');
+            if (owner && repo) return `${owner}/${repo}`;
+          }
+        }
+      } catch {
+        // Not a valid URL, try shorthand
+      }
+
+      // Try shorthand owner/repo
+      const shorthand = trimmed.split('/').filter(Boolean);
+      if (shorthand.length === 2) {
+        return `${shorthand[0]}/${shorthand[1]}`;
+      }
+
+      return null;
+    }
+
+    // Validate owner/repo format
+    function isValidRepo(repo) {
+      return /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repo);
+    }
+
+    // Show error message
+    function showError(message) {
+      errorMsg.textContent = message;
+      errorMsg.classList.remove('hidden');
+      repoInput.classList.add('border-danger', 'focus:border-danger', 'focus:ring-dangerDim');
+      repoInput.classList.remove('border-border', 'focus:border-accent', 'focus:ring-accentDim');
+    }
+
+    function clearError() {
+      errorMsg.classList.add('hidden');
+      errorMsg.textContent = '';
+      repoInput.classList.remove('border-danger', 'focus:border-danger', 'focus:ring-dangerDim');
+      repoInput.classList.add('border-border', 'focus:border-accent', 'focus:ring-accentDim');
+    }
+
+    // Save to recent repos in localStorage
+    function saveRecentRepo(repo) {
+      try {
+        const stored = localStorage.getItem('github-repo-lens-recent');
+        let recent = stored ? JSON.parse(stored) : [];
+        recent = recent.filter(r => r !== repo);
+        recent.unshift(repo);
+        recent = recent.slice(0, 10);
+        localStorage.setItem('github-repo-lens-recent', JSON.stringify(recent));
+      } catch (e) {
+        console.warn('Failed to save recent repo:', e);
+      }
+    }
+
+    // Load recent repos
+    function loadRecentRepos() {
+      try {
+        const stored = localStorage.getItem('github-repo-lens-recent');
+        return stored ? JSON.parse(stored) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    // Render recent repos
+    function renderRecentRepos() {
+      const recent = loadRecentRepos();
+      if (recent.length === 0) {
+        recentSection.classList.add('hidden');
+        return;
+      }
+
+      recentList.innerHTML = recent.map(repo => `
+        <button
+          class="recent-item bg-bgElevated border border-border rounded-lg px-3 py-2 text-sm font-mono text-fgMuted hover:text-fg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg"
+          type="button"
+          data-repo="${repo}"
+          role="listitem"
+          aria-label="Load ${repo}"
+        >${repo}</button>
+      `).join('');
+
+      recentSection.classList.remove('hidden');
+    }
+
+    // Clear recent repos
+    function clearRecentRepos() {
+      try {
+        localStorage.removeItem('github-repo-lens-recent');
+        renderRecentRepos();
+      } catch (e) {
+        console.warn('Failed to clear recent repos:', e);
+      }
+    }
+
+    // Create card HTML
+    function createCard(tool, repo, index) {
+      const url = tool.url(repo);
+      return `
+        <article class="card-enter bg-bgElevated border border-border rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4" role="listitem" style="animation-delay: ${index * 80}ms">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3 mb-2">
+              <span class="text-lg font-semibold text-fg">${tool.name}</span>
+              <span class="px-2 py-0.5 bg-accentDim text-accent text-xs font-mono rounded">${tool.id}</span>
+            </div>
+            <p class="text-sm text-fgMuted mb-3">${tool.description}</p>
+            <code class="font-mono text-xs text-fgMuted break-all bg-bg px-2 py-1.5 rounded block max-h-10 overflow-auto">${url}</code>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2 sm:w-auto w-full sm:w-48 flex-shrink-0">
+            <button
+              class="btn-open flex-1 bg-accent text-white font-medium px-4 py-2 rounded-lg hover:bg-accentHover focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg transition-colors text-sm"
+              type="button"
+              data-url="${url}"
+              aria-label="Open ${tool.name} in new tab"
+            >
+              Open in New Tab
+            </button>
+            <button
+              class="btn-copy flex-1 bg-bg border border-borderHover text-fg font-medium px-4 py-2 rounded-lg hover:border-accent hover:text-accent transition-colors text-sm"
+              type="button"
+              data-url="${url}"
+              aria-label="Copy ${tool.name} URL"
+            >
+              Copy URL
+            </button>
+          </div>
+        </article>
+      `;
+    }
+
+    // Render cards with staggered animation
+    function renderCards(repo) {
+      currentRepo = repo;
+      currentUrls = TOOLS.map(t => t.url(repo));
+
+      cardsContainer.innerHTML = TOOLS.map((tool, index) => createCard(tool, repo, index)).join('');
+
+      // Trigger animations
+      requestAnimationFrame(() => {
+        const cards = cardsContainer.querySelectorAll('.card-enter');
+        cards.forEach((card, i) => {
+          setTimeout(() => card.classList.add('active'), i * 80);
+        });
+      });
+
+      resultsSection.classList.remove('hidden');
+      emptyState.classList.add('hidden');
+    }
+
+    // Copy to clipboard with toast
+    async function copyToClipboard(text, label = 'URL') {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast(`Copied ${label}!`);
+      } catch {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showToast(`Copied ${label}!`);
+      }
+    }
+
+    function showToast(message) {
+      toastText.textContent = message;
+      copyToast.classList.add('show');
+      copyToast.setAttribute('aria-hidden', 'false');
+      setTimeout(() => {
+        copyToast.classList.remove('show');
+        copyToast.setAttribute('aria-hidden', 'true');
+      }, 2000);
+    }
+
+    // Open all URLs
+    function openAllUrls() {
+      const blocked = currentUrls.some(url => {
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+        return !win || win.closed || typeof win.closed === 'undefined';
+      });
+
+      if (blocked) {
+        showToast('Some pop-ups were blocked — allow pop-ups for this site');
+      }
+    }
+
+    // Generate links for a repo
+    function generateLinks(repo) {
+      if (!isValidRepo(repo)) {
+        showError('Invalid repository format. Use "owner/repo" or a full GitHub URL.');
+        return;
+      }
+
+      clearError();
+      renderCards(repo);
+      saveRecentRepo(repo);
+      renderRecentRepos();
+      repoInput.value = repo;
+    }
+
+    // Handle input
+    function handleInput() {
+      const input = repoInput.value.trim();
+      if (!input) {
+        clearError();
+        resultsSection.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      const repo = parseGitHubUrl(input);
+      if (repo) {
+        generateLinks(repo);
+      } else {
+        showError('Could not parse repository. Try "owner/repo" or a full GitHub URL.');
+        resultsSection.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+      }
+    }
+
+    // Debounced auto-generate
+    let debounceTimer = null;
+    function debouncedGenerate() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const input = repoInput.value.trim();
+        if (input) {
+          const repo = parseGitHubUrl(input);
+          if (repo && isValidRepo(repo)) {
+            generateLinks(repo);
+          }
+        }
+      }, 500);
+    }
+
+    // Event listeners
+    repoInput.addEventListener('input', () => {
+      clearError();
+      debouncedGenerate();
+    });
+
+    repoInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTimeout(debounceTimer);
+        handleInput();
+      }
+    });
+
+    repoInput.addEventListener('paste', () => {
+      // Small delay to let paste complete
+      setTimeout(debouncedGenerate, 50);
+    });
+
+    generateBtn.addEventListener('click', handleInput);
+
+    clearRecentBtn.addEventListener('click', clearRecentRepos);
+
+    openAllBtn.addEventListener('click', openAllUrls);
+
+    // Delegated events for cards
+    cardsContainer.addEventListener('click', (e) => {
+      const openBtn = e.target.closest('.btn-open');
+      const copyBtn = e.target.closest('.btn-copy');
+
+      if (openBtn) {
+        const url = openBtn.dataset.url;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+
+      if (copyBtn) {
+        const url = copyBtn.dataset.url;
+        const card = copyBtn.closest('[role="listitem"]');
+        const toolName = card?.querySelector('.font-semibold')?.textContent || 'URL';
+        copyToClipboard(url, toolName);
+      }
+    });
+
+    // Delegated events for recent repos
+    recentList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-repo]');
+      if (btn) {
+        const repo = btn.dataset.repo;
+        generateLinks(repo);
+        repoInput.focus();
+      }
+    });
+
+    // View source link
+    document.getElementById('view-source').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.open(location.href, '_blank');
+    });
+
+    // Initialize
+    function init() {
+      renderRecentRepos();
+      repoInput.focus();
+
+      // Check for repo in URL hash
+      const hash = location.hash.slice(1);
+      if (hash) {
+        const repo = parseGitHubUrl(decodeURIComponent(hash));
+        if (repo && isValidRepo(repo)) {
+          repoInput.value = repo;
+          generateLinks(repo);
+        }
+      }
+    }
+
+    // Update URL hash when repo changes
+    function updateHash(repo) {
+      history.replaceState(null, '', `#${encodeURIComponent(repo)}`);
+    }
+
+    // Override generateLinks to update hash
+    const originalGenerateLinks = generateLinks;
+    window.generateLinks = function(repo) {
+      originalGenerateLinks(repo);
+      updateHash(repo);
+    };
+
+    init();
+  </script>
+</body>
+</html>
