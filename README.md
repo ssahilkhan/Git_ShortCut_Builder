@@ -80,3 +80,7 @@ node test.mjs
 Know a tool that should be here? [Open an issue](https://github.com/ssahilkhan/Git_ShortCut_Builder/issues) or send a pull request. Tools are defined in the `TOOLS` list in `index.html`.
 
 If Repolens saves you time, a star helps other people find it.
+
+## License
+
+[MIT](LICENSE)
